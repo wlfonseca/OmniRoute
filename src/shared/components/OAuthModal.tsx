@@ -213,6 +213,13 @@ export default function OAuthModal({
 
       let forceManual = false;
 
+      // Claude Code built-in OAuth flow commonly ends on Anthropic-hosted pages that
+      // display an Authentication Code instead of redirecting back to OmniRoute.
+      // Start directly in manual mode so users always have an input to paste code/url.
+      if (provider === "claude") {
+        forceManual = true;
+      }
+
       // Codex: on localhost use callback server on port 1455,
       // on remote use standard auth code flow (callback server is unreachable)
       if (provider === "codex") {
