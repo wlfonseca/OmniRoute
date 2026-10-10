@@ -366,6 +366,7 @@ RUN --mount=type=cache,id=s/92ca8a61-c1ba-421f-a389-d48ac7258c2d-npm-cache,targe
     @openai/codex@0.159.2 \
     @anthropic-ai/claude-code@2.1.260 \
     droid@0.212.0 \
+    @kilocode/cli@7.8.8 \
     openclaw@2026.9.1
 
 USER node
