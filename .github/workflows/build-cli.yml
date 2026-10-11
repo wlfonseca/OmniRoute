@@ -6,12 +6,14 @@ name: Build CLI Image
 # service used by docker-compose). This workflow builds that single target on a
 # GitHub-hosted runner and pushes it to GHCR so the host can `docker pull` it.
 #
-# Hosted `ubuntu-latest` on a public repo is 4 vCPU / 16 GB / ~14 GB SSD. The
-# Dockerfile defaults (OMNIROUTE_BUILD_MEMORY_MB=6144, OMNIROUTE_BUILD_WORKERS=2
-# → 1 page-data worker, webpack) are the config the in-repo
-# tests/unit/docker-build-memory-budget.test.ts validates against a 16 GB runner.
-# We therefore pass NO build-args and let those defaults apply. The swap step
-# below is a safety net, not a requirement.
+# Hosted `ubuntu-latest` on a public repo is 4 vCPU / 16 GB / ~14 GB SSD. First
+# run 38115016164 proved the Dockerfile default OMNIROUTE_BUILD_MEMORY_MB=6144 is
+# too small for this tree: the webpack build died with a V8 heap OOM
+# "Ineffective mark-compacts near heap limit" → "next build worker exited with
+# code: null and signal: SIGABRT" (the runner had 15 GiB RAM + 8 GiB swap free).
+# We therefore raise the build heap to 12288 (the value upstream's
+# docker-publish.yml uses), leaving the worker count at the validated default.
+# The swap step below is a safety net, not a requirement.
 on:
   workflow_dispatch:
     inputs:
@@ -74,6 +76,8 @@ jobs:
           target: runner-cli
           platforms: linux/amd64
           push: true
+          build-args: |
+            OMNIROUTE_BUILD_MEMORY_MB=12288
           tags: |
             ghcr.io/${{ github.repository_owner }}/omniroute:cli
             ghcr.io/${{ github.repository_owner }}/omniroute:cli-3.8.52
