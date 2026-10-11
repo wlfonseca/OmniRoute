@@ -1,0 +1,82 @@
+name: Build CLI Image
+
+# Fork-only helper: upstream ships runner-base / runner-web via docker-publish.yml
+# on a self-hosted `omni-build` pool. This fork has no such runner, and does not
+# need the web target — it only needs the `runner-cli` image (the `omniroute:cli`
+# service used by docker-compose). This workflow builds that single target on a
+# GitHub-hosted runner and pushes it to GHCR so the host can `docker pull` it.
+#
+# Hosted `ubuntu-latest` on a public repo is 4 vCPU / 16 GB / ~14 GB SSD. The
+# Dockerfile defaults (OMNIROUTE_BUILD_MEMORY_MB=6144, OMNIROUTE_BUILD_WORKERS=2
+# → 1 page-data worker, webpack) are the config the in-repo
+# tests/unit/docker-build-memory-budget.test.ts validates against a 16 GB runner.
+# We therefore pass NO build-args and let those defaults apply. The swap step
+# below is a safety net, not a requirement.
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: Git ref to build
+        required: false
+        default: update/v3.8.52
+  push:
+    branches:
+      - update/v3.8.52
+    paths:
+      - Dockerfile
+      - .github/workflows/build-cli.yml
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-cli-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-cli:
+    name: Build & push runner-cli (linux/amd64)
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - name: Expand virtual memory (safety net)
+        run: |
+          set -euo pipefail
+          sudo swapoff -a || true
+          sudo rm -f /mnt/swapfile /swapfile
+          sudo fallocate -l 8G /mnt/swapfile || sudo dd if=/dev/zero of=/mnt/swapfile bs=1M count=8192
+          sudo chmod 600 /mnt/swapfile
+          sudo mkswap /mnt/swapfile
+          sudo swapon /mnt/swapfile
+          free -h
+
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.inputs.ref || github.ref }}
+          persist-credentials: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push CLI image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          target: runner-cli
+          platforms: linux/amd64
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/omniroute:cli
+            ghcr.io/${{ github.repository_owner }}/omniroute:cli-3.8.52
+          cache-from: type=gha,scope=cli
+          cache-to: type=gha,scope=cli,mode=max,ignore-error=true
+          no-cache: false
